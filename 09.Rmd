@@ -34,36 +34,36 @@ lion_noses <- as.data.frame(LionNoses) |>
 
 Now we load **brms** and the model.
 
-```{r m7.1_09, warning = F, message = F}
+```{r m1, warning = F, message = F}
 library(brms)
 
 m7.1 <-
   brm(data = lion_noses,
       age ~ percentage.black,
       seed = 7,
-      file = "fits/m07.01")
+      file = "fits/m1")
 ```
 
 Here's the summary.
 
 ```{r}
-print(m7.1, robust = T)
+print(m1, robust = T)
 ```
 
 These summaries are derived from the posterior simulations, which you can access directly with `posterior_samples()`.
 
 ```{r}
-post <- posterior_samples(m7.1)
+posterior <- posterior_samples(m1)
 
-head(post)
+head(posterior)
 ```
 
 We can hand-compute the median and mad sd for each using a **tidyverse**-style workflow like this.
 
 ```{r, message = F}
-post %>% 
-  pivot_longer(b_Intercept:sigma) %>% 
-  group_by(name) %>% 
+posterior |> 
+  pivot_longer(b_Intercept:sigma) |> 
+  group_by(name) |>
   summarise(median = median(value),
             mad_sd = mad(value))
 ```
@@ -73,11 +73,11 @@ post %>%
 Before we make Figure 9.1, it'll be handy to save a few summary values.
 
 ```{r}
-med_a <- median(post$b_Intercept)
-med_b <- median(post$b_growth)
+med_a <- median(posterior$b_Intercept)
+med_b <- median(posterior$b_growth)
 
-se_a <- fixef(m7.1, robust = T)[1, 2]
-se_b <- fixef(m7.1, robust = T)[2, 2]
+se_a <- fixef(m1, robust = T)[1, 2]
+se_b <- fixef(m1, robust = T)[2, 2]
 ```
 
 Now make the two subplots of Figure 9.1.
@@ -89,7 +89,7 @@ theme_set(theme_linedraw() +
 
 # left
 p1 <-
-  post %>% 
+  posterior %>% 
   ggplot(aes(x = b_Intercept)) +
   geom_histogram(binwidth = 1, boundary = 0, 
                  fill = "grey75", color = "white") +
@@ -106,7 +106,7 @@ p1 <-
 
 # right
 p2 <-
-  post %>% 
+  posterior %>% 
   ggplot(aes(x = b_growth)) +
   geom_histogram(binwidth = 0.5, boundary = 0, 
                  fill = "grey75", color = "white") +
@@ -134,7 +134,7 @@ The scatter plot of Figure 9.2 is pretty simple.
 
 ```{r, fig.width = 3.75, fig.height = 3.5}
 p1 <-
-  post %>% 
+  posterior %>% 
   ggplot(aes(x = b_Intercept, y = b_growth)) +
   geom_point(size = 1/6, alpha = 1/2) +
   labs(subtitle = "Posterior draws of the regression coefficients a, b",
@@ -151,18 +151,18 @@ The spaghetti plot in Figure 9.2b is a little more involved. Here we make it and
 set.seed(9)
 
 p2 <-
-  posterior_samples(m7.1) %>% 
+  posterior_samples(m1) %>% 
   slice_sample(n = 100) %>% 
   
   ggplot() +
   geom_abline(aes(intercept = b_Intercept, slope = b_growth),
               size = 1/4, alpha = 1/2, color = "grey33") +
-  geom_point(data = hibbs,
+  geom_point(data = lion_noses,
              aes(x = growth, y = vote)) +
-  scale_x_continuous("Average recent growth in personal income",
+  scale_x_continuous("Age (years)",
                      breaks = 0:4, labels = function(x) str_c(x, "%"),
                      limits = c(-1, 5), expand = c(0, 0)) +
-  scale_y_continuous("Incumbent party's vote share",
+  scale_y_continuous("Percentage blakc markings on nose",
                      labels = function(x) str_c(x, "%")) +
   coord_cartesian(ylim = c(43, 62)) +
   labs(subtitle = "Data and 100 posterior draws of the line, y = a + bx",
@@ -180,7 +180,7 @@ p2 <-
 Here's a **tidyverse** way to compute the central tendency (median) and spread (mad sd) for a combination of parameters.
 
 ```{r}
-post %>% 
+posterior %>% 
   mutate(z = b_Intercept / b_growth) %>% 
   summarise(median = median(z),
             mad_sd = mad(z))
