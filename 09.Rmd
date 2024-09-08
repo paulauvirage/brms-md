@@ -199,9 +199,9 @@ The **brms** package also includes the `predict()`, `posterior_linpred()`, and `
 Say we want to use our `m7.1` to predict an incumbent's vote percentage, conditional on 2% economic growth. If we would like a simple point prediction, we can use `brms::predict()`. A key point is we'll need to feed in our `growth` value by way of a data frame or tibble, which we'll call `new`. The `new` data is then fed into the `newdata` argument. If we want the point summarized by a posterior median, rather than a posterior mean, we need to set `robust = TRUE`.
 
 ```{r}
-new <- tibble(growth = 2.0)
+new <- tibble(percentage.black = 40)
 
-predict(m7.1, 
+predict(m1, 
         newdata = new,
         robust = T)
 ```
@@ -209,8 +209,8 @@ predict(m7.1,
 As is typical, **brms** accompanies the point `Estimate` with measures of spread. If we wanted to use the posterior medians of the `a` and `b` parameters to do this by hand, it will probably be easiest to extract these using `fixef()`.
 
 ```{r}
-a_hat <- fixef(m7.1, robust = T)[1, 1]
-b_hat <- fixef(m7.1, robust = T)[2, 1]
+a_hat <- fixef(m1, robust = T)[1, 1]
+b_hat <- fixef(m1, robust = T)[2, 1]
 
 a_hat + b_hat * new
 ```
@@ -223,7 +223,7 @@ Much like in the text, the `brms::posterior_linpred()` function returns a vector
 
 ```{r}
 y_linpred <-
-  posterior_linpred(m7.1, 
+  posterior_linpred(m1, 
                     newdata = new,
                     robust = T)
 
@@ -233,8 +233,8 @@ str(y_linpred)
 We can get these by hand by working directly with `post`.
 
 ```{r}
-post %>% 
-  mutate(growth = 2) %>% 
+posterior %>% 
+  muta(growth = 2) %>% 
   mutate(y_linpred = b_Intercept + b_growth * growth) %>% 
   select(y_linpred) %>% 
   head()
