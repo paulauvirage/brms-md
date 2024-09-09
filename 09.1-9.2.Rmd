@@ -65,7 +65,7 @@ Continuing now just with m1brms
 These summaries are derived from the posterior simulations, which you can access directly with `posterior_samples()`.
 
 ```{r}
-postpred <- as.data.frame(m1$fit)
+postpred <- as.data.frame(m1brms$fit)
 dim(postpred)
 head(postpred)
 ?as_draws
@@ -89,8 +89,8 @@ Before we make Figure 9.1, it'll be handy to save a few summary values.
 med_a <- median(postpred$b_Intercept)
 med_b <- median(postpred$b_percentage.black)
 
-se_a <- fixef(m1, robust = T)[1, 2]
-se_b <- fixef(m1, robust = T)[2, 2]
+se_a <- fixef(m1brms, robust = T)[1, 2]
+se_b <- fixef(m1brms, robust = T)[2, 2]
 ```
 
 Now make the two subplots of Figure 9.1.
@@ -210,7 +210,7 @@ The **brms** package also includes the `predict()`, `posterior_linpred()`, and `
 ```r
 # something like this - adapt
 new_grid <- data.frame(percentage.black=seq(10,80,5))
-y_point_pred_grid <- predict(M1, newdata=new_grid)
+y_point_pred_grid <- predict(m1brms, newdata=new_grid)
 y_linpred_grid <- posterior_linpred(M1, newdata=new_grid)
 y_pred_grid <- posterior_predict(M1, newdata=new_grid)
 ```
@@ -222,7 +222,7 @@ Say we want to use our `m7.1` to predict an incumbent's vote percentage, conditi
 ```{r}
 new <- tibble(percentage.black = 40)
 
-predict(m1, 
+predict(m1brms, 
         newdata = new,
         robust = T)
 ```
@@ -230,8 +230,8 @@ predict(m1,
 As is typical, **brms** accompanies the point `Estimate` with measures of spread. If we wanted to use the posterior medians of the `a` and `b` parameters to do this by hand, it will probably be easiest to extract these using `fixef()`.
 
 ```{r}
-a_hat <- fixef(m1, robust = T)[1, 1]
-b_hat <- fixef(m1, robust = T)[2, 1]
+a_hat <- fixef(m1brms, robust = T)[1, 1]
+b_hat <- fixef(m1brms, robust = T)[2, 1]
 
 a_hat + b_hat * new
 ```
@@ -244,7 +244,7 @@ Much like in the text, the `brms::posterior_linpred()` function returns a vector
 
 ```{r}
 y_linpred <-
-  posterior_linpred(m1, 
+  posterior_linpred(m1brms, 
                     newdata = new,
                     robust = T)
 ?posterior_linpred
@@ -269,7 +269,7 @@ The `brms::posterior_predict()` function works very much like the `posterior_lin
 
 ```{r}
 y_pred <-
-  posterior_predict(m1, 
+  posterior_predict(m1brms, 
                     newdata = new,
                     robust = T)
 
@@ -319,17 +319,17 @@ Now plug those into our post-processing functions.
 
 ```{r}
 y_point_pred_grid <- 
-  predict(m1, 
+  predict(m1brms, 
           newdata = new_grid,
           robust = T) 
 
 y_linpred_grid <- 
-  posterior_linpred(m1, 
+  posterior_linpred(m1brms, 
                     newdata = new_grid,
                     robust = T) 
 
 y_pred_grid <- 
-  posterior_predict(m1, 
+  posterior_predict(m1brms, 
                     newdata = new_grid,
                     robust = T)
 ```
