@@ -1,14 +1,14 @@
 ---
 title: "Chapter 9: Prediction and Bayesian inference"
-author: "A Solomon Kurz"
+author: "Paul Robinson"
 date: "`r format(Sys.Date())`"
 output:
   github_document
 ---
 
-```{r, eval = F, echo = F}
-https://github.com/avehtari/ROS-Examples/
-```
+
+Adapted from [Aki Vehtari's code for ""Regression and other stories"](https://github.com/avehtari/ROS-Examples/) adapted by [Solomon Kurtz](https://github.com/ASKurz/Working-through-Regression-and-other-stories) for [brms](https://paulbuerkner.com/brms/) and the [tidyverse](https://www.tidyverse.org/).
+
 
 ```{r, echo = F, cache = F}
 knitr::opts_chunk$set(fig.retina = 2.5)
@@ -27,20 +27,22 @@ Once again, we return to model `m7.1` from Chapter 7. First, we'll load the `Lio
 ```{r, warning = F, message = F}
 library(tidyverse)
 library(abd)
+library(brms)
+library(broom.mixed)
+library(posterior) # do I need this?
+library(patchwork)
 
 lion_noses <- as.data.frame(LionNoses) |> 
   mutate(percentage.black = 100*proportion.black)
 lion_noses
 ```
 
-Now we load **brms** and the model.
+Now we load make the model.
 
 ```{r m1, warning = F, message = F}
-library(brms)
 methods(class = "brmsfit")
 
-m1 <-
-  brm(data = lion_noses,
+m1 <- brm(data = lion_noses,
       age ~ percentage.black,
       seed = 7,
       file = "models/m1")
@@ -49,7 +51,6 @@ m1 <-
 Here's the summary.
 
 ```{r}
-library(broom.mixed)
 tidy(m1)
 print(m1, robust = T, prob = 0.9)
 ```
@@ -57,17 +58,16 @@ print(m1, robust = T, prob = 0.9)
 These summaries are derived from the posterior simulations, which you can access directly with `posterior_samples()`.
 
 ```{r}
-library(posterior)
-m1_fit <- as.data.frame(m1$fit)
-dim(m1_fit)
-head(m1_fit)
+postpred <- as.data.frame(m1$fit)
+dim(postpred)
+head(postpred)
 ?as_draws
 ```
 
 We can hand-compute the median and mad sd for each using a **tidyverse**-style workflow like this.
 
 ```{r, message = F}
-m1_fit |> 
+postpred |> 
   pivot_longer(b_Intercept:sigma) |> 
   group_by(name) |>
   summarise(median = median(value),
@@ -79,8 +79,8 @@ m1_fit |>
 Before we make Figure 9.1, it'll be handy to save a few summary values.
 
 ```{r}
-med_a <- median(m1_fit$b_Intercept)
-med_b <- median(m1_fit$b_percentage.black)
+med_a <- median(postpred$b_Intercept)
+med_b <- median(postpred$b_percentage.black)
 
 se_a <- fixef(m1, robust = T)[1, 2]
 se_b <- fixef(m1, robust = T)[2, 2]
@@ -89,13 +89,14 @@ se_b <- fixef(m1, robust = T)[2, 2]
 Now make the two subplots of Figure 9.1.
 
 ```{r}
+
 # set the global plotting theme
 theme_set(theme_linedraw() +
             theme(panel.grid = element_blank()))
 
 # left
 p1 <-
-  posterior %>% 
+  postpred %>% 
   ggplot(aes(x = b_Intercept)) +
   geom_histogram(binwidth = 1, boundary = 0, 
                  fill = "grey75", color = "white") +
@@ -112,8 +113,8 @@ p1 <-
 
 # right
 p2 <-
-  posterior %>% 
-  ggplot(aes(x = b_growth)) +
+  postpred %>% 
+  ggplot(aes(x = b_percentage.black)) +
   geom_histogram(binwidth = 0.5, boundary = 0, 
                  fill = "grey75", color = "white") +
   geom_vline(xintercept = med_b) +
@@ -131,7 +132,6 @@ p2 <-
 Bind the two subplots together with **patchwork** syntax and plot.
 
 ```{r, fig.width = 7.5, fig.height = 3.5}
-library(patchwork)
 
 p1 + p2
 ```
@@ -140,8 +140,8 @@ The scatter plot of Figure 9.2 is pretty simple.
 
 ```{r, fig.width = 3.75, fig.height = 3.5}
 p1 <-
-  posterior %>% 
-  ggplot(aes(x = b_Intercept, y = b_growth)) +
+  postpred %>% 
+  ggplot(aes(x = b_Intercept, y = b_percentage.black)) +
   geom_point(size = 1/6, alpha = 1/2) +
   labs(subtitle = "Posterior draws of the regression coefficients a, b",
        x = "a",
@@ -156,19 +156,19 @@ The spaghetti plot in Figure 9.2b is a little more involved. Here we make it and
 ```{r, warning = F, fig.width = 7.5, fig.height = 3.5}
 set.seed(9)
 
+
 p2 <-
-  posterior_samples(m1) %>% 
-  slice_sample(n = 100) %>% 
-  
+  postpred |> 
+  slice_sample(n = 100) |> 
   ggplot() +
-  geom_abline(aes(intercept = b_Intercept, slope = b_growth),
+  geom_abline(aes(intercept = b_Intercept, slope = b_percentage.black),
               size = 1/4, alpha = 1/2, color = "grey33") +
   geom_point(data = lion_noses,
-             aes(x = growth, y = vote)) +
+             aes(x = percentage.black, y = age)) +
   scale_x_continuous("Age (years)",
                      breaks = 0:4, labels = function(x) str_c(x, "%"),
                      limits = c(-1, 5), expand = c(0, 0)) +
-  scale_y_continuous("Percentage blakc markings on nose",
+  scale_y_continuous("Percentage black markings on nose",
                      labels = function(x) str_c(x, "%")) +
   coord_cartesian(ylim = c(43, 62)) +
   labs(subtitle = "Data and 100 posterior draws of the line, y = a + bx",
@@ -186,8 +186,8 @@ p2 <-
 Here's a **tidyverse** way to compute the central tendency (median) and spread (mad sd) for a combination of parameters.
 
 ```{r}
-posterior %>% 
-  mutate(z = b_Intercept / b_growth) %>% 
+postpred %>% 
+  mutate(z = b_Intercept / b_percentage.black) %>% 
   summarise(median = median(z),
             mad_sd = mad(z))
 ```
@@ -199,6 +199,14 @@ The **brms** package also includes the `predict()`, `posterior_linpred()`, and `
 * compute "the best point estimate of the average value of $y$ for new data points," $\hat a + \hat b x^\text{new}$;
 * compute "the distribution of uncertainty about the expected or average value of $y$ for new data points," $a + b x^\text{new}$ ; and
 * compute the "uncertainty about a new observation $y$ with predictors $x^\text{new}$," $a + b x^\text{new} + \text{error}$.
+
+```r
+# something like this - adapt
+new_grid <- data.frame(growth=seq(-2.0, 4.0, 0.5))
+y_point_pred_grid <- predict(M1, newdata=new_grid)
+y_linpred_grid <- posterior_linpred(M1, newdata=new_grid)
+y_pred_grid <- posterior_predict(M1, newdata=new_grid)
+```
 
 ### 9.2.1 Point prediction using predict.
 
