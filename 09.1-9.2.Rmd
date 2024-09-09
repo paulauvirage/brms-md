@@ -1,0 +1,432 @@
+---
+title: "Chapter 9.1-9.2: Prediction and Bayesian inference, excluding priors"
+author: "Paul Robinson"
+date: "`r format(Sys.Date())`"
+output:
+  github_document
+---
+
+
+Adapted from [Aki Vehtari's code for ""Regression and other stories"](https://github.com/avehtari/ROS-Examples/) adapted by [Solomon Kurtz](https://github.com/ASKurz/Working-through-Regression-and-other-stories) for [brms](https://paulbuerkner.com/brms/) and the [tidyverse](https://www.tidyverse.org/).
+
+
+```{r, echo = F, cache = F}
+knitr::opts_chunk$set(fig.retina = 2.5)
+knitr::opts_chunk$set(fig.align = "center")
+options(width = 100)
+```
+
+# Prediction and Bayesian inference
+
+> Bayesian inference involves three steps that go beyond classical estimation. First, the data and model are combined to form a *posterior distribution*, which we typically summarize by a set of simulations of the *parameters* in the model. Second, we can propagate uncertainty in this distribution--that is, we can get simulation-based *predictions* for unobserved or future outcomes that accounts for uncertainty in the model parameters. Third, we can include additional information into the model using a *prior distribution*. (p. 113, *emphasis* in the original)
+
+## 9.1 Propagating uncertainty in inference using posterior simulations
+
+Once again, we return to model `m7.1` from Chapter 7. First, we'll load the `LionNoses` data.
+
+```{r, warning = F, message = F}
+library(tidyverse)
+library(abd)
+library(brms)
+library(broom.mixed)
+library(posterior) # do I need this?
+library(patchwork)
+
+lion_noses <- as.data.frame(LionNoses) |> 
+  mutate(percentage.black = 100*proportion.black)
+lion_noses
+```
+
+Now we load make the model.
+
+```{r m1, warning = F, message = F}
+methods(class = "brmsfit")
+
+m1 <- brm(data = lion_noses,
+      age ~ percentage.black,
+      seed = 7,
+      file = "models/m1")
+```
+
+Here's the summary.
+
+```{r}
+tidy(m1)
+print(m1, robust = T, prob = 0.9)
+```
+
+These summaries are derived from the posterior simulations, which you can access directly with `posterior_samples()`.
+
+```{r}
+postpred <- as.data.frame(m1$fit)
+dim(postpred)
+head(postpred)
+?as_draws
+```
+
+We can hand-compute the median and mad sd for each using a **tidyverse**-style workflow like this.
+
+```{r, message = F}
+postpred |> 
+  pivot_longer(b_Intercept:sigma) |> 
+  group_by(name) |>
+  summarise(median = median(value),
+            mad_sd = mad(value))
+```
+
+### 9.1.1 Uncertainty in the regression coefficients and implied uncertainty in the regression line.
+
+Before we make Figure 9.1, it'll be handy to save a few summary values.
+
+```{r}
+med_a <- median(postpred$b_Intercept)
+med_b <- median(postpred$b_percentage.black)
+
+se_a <- fixef(m1, robust = T)[1, 2]
+se_b <- fixef(m1, robust = T)[2, 2]
+```
+
+Now make the two subplots of Figure 9.1.
+
+```{r}
+
+# set the global plotting theme
+theme_set(theme_linedraw() +
+            theme(panel.grid = element_blank()))
+
+# left
+p1 <-
+  postpred %>% 
+  ggplot(aes(x = b_Intercept)) +
+  geom_histogram(binwidth = 1, boundary = 0, 
+                 fill = "grey75", color = "white") +
+  geom_vline(xintercept = med_a) +
+  geom_segment(x = med_a - se_a, xend = med_a + se_a,
+               y = 575, yend = 575,
+               arrow = arrow(ends = "both", length = unit(0.25, "cm"))) +
+  geom_segment(x = med_a - se_a * 2, xend = med_a + se_a * 2,
+               y = 250, yend = 250,
+               arrow = arrow(ends = "both", length = unit(0.25, "cm"))) +
+  scale_y_continuous(NULL, breaks = NULL) +
+  labs(subtitle = "Posterior simulations of the intercept, a,\nand posterior median +/− 1 and 2 std err",
+       x = "a")
+
+# right
+p2 <-
+  postpred %>% 
+  ggplot(aes(x = b_percentage.black)) +
+  geom_histogram(binwidth = 0.5, boundary = 0, 
+                 fill = "grey75", color = "white") +
+  geom_vline(xintercept = med_b) +
+  geom_segment(x = med_b - se_b, xend = med_b + se_b,
+               y = 625, yend = 625,
+               arrow = arrow(ends = "both", length = unit(0.25, "cm"))) +
+  geom_segment(x = med_b - se_b * 2, xend = med_b + se_b * 2,
+               y = 275, yend = 275,
+               arrow = arrow(ends = "both", length = unit(0.25, "cm"))) +
+  scale_y_continuous(NULL, breaks = NULL) +
+  labs(subtitle = "Posterior simulations of the intercept, b,\nand posterior median +/− 1 and 2 std err",
+       x = "b")
+```
+
+Bind the two subplots together with **patchwork** syntax and plot.
+
+```{r, fig.width = 7.5, fig.height = 3.5}
+
+p1 + p2
+```
+
+The scatter plot of Figure 9.2 is pretty simple.
+
+```{r, fig.width = 3.75, fig.height = 3.5}
+p1 <-
+  postpred %>% 
+  ggplot(aes(x = b_Intercept, y = b_percentage.black)) +
+  geom_point(size = 1/6, alpha = 1/2) +
+  labs(subtitle = "Posterior draws of the regression coefficients a, b",
+       x = "a",
+       y = "b") +
+  ylim(0, NA)
+
+p1
+```
+
+The spaghetti plot in Figure 9.2b is a little more involved. Here we make it and then combine the two ggplots to make the complete Figure 9.2.
+
+```{r, warning = F, fig.width = 7.5, fig.height = 3.5}
+set.seed(9)
+
+
+p2 <-
+  postpred |> 
+  slice_sample(n = 100) |> 
+  ggplot() +
+  geom_abline(aes(intercept = b_Intercept, slope = b_percentage.black),
+              size = 1/4, alpha = 1/2, color = "grey33") +
+  geom_point(data = lion_noses,
+             aes(x = percentage.black, y = age)) +
+  scale_x_continuous("Age (years)",
+                     breaks = 0:4, labels = function(x) str_c(x, "%"),
+                     limits = c(-1, 5), expand = c(0, 0)) +
+  scale_y_continuous("Percentage black markings on nose",
+                     labels = function(x) str_c(x, "%")) +
+  coord_cartesian(ylim = c(43, 62)) +
+  labs(subtitle = "Data and 100 posterior draws of the line, y = a + bx",
+       x = "x",
+       y = "y")
+
+# combine
+(p1 + p2) &
+  theme(plot.subtitle = element_text(size = 10),
+        plot.title.position = "plot")
+```
+
+### 9.1.2 Using the matrix of posterior simulations to express uncertainty about a parameter estimate or function of parameter estimates.
+
+Here's a **tidyverse** way to compute the central tendency (median) and spread (mad sd) for a combination of parameters.
+
+```{r}
+postpred %>% 
+  mutate(z = b_Intercept / b_percentage.black) %>% 
+  summarise(median = median(z),
+            mad_sd = mad(z))
+```
+
+## 9.2 Prediction and uncertainty: `predict`, `posterior_linpred`, and `posterior_predict`
+
+The **brms** package also includes the `predict()`, `posterior_linpred()`, and `posterior_predict()` functions. On page 115, we learn these will alow us to
+
+* compute "the best point estimate of the average value of $y$ for new data points," $\hat a + \hat b x^\text{new}$;
+* compute "the distribution of uncertainty about the expected or average value of $y$ for new data points," $a + b x^\text{new}$ ; and
+* compute the "uncertainty about a new observation $y$ with predictors $x^\text{new}$," $a + b x^\text{new} + \text{error}$.
+
+```r
+# something like this - adapt
+new_grid <- data.frame(percentage.black=seq(10,80,5))
+y_point_pred_grid <- predict(M1, newdata=new_grid)
+y_linpred_grid <- posterior_linpred(M1, newdata=new_grid)
+y_pred_grid <- posterior_predict(M1, newdata=new_grid)
+```
+
+### 9.2.1 Point prediction using predict.
+
+Say we want to use our `m7.1` to predict an incumbent's vote percentage, conditional on 2% economic growth. If we would like a simple point prediction, we can use `brms::predict()`. A key point is we'll need to feed in our `growth` value by way of a data frame or tibble, which we'll call `new`. The `new` data is then fed into the `newdata` argument. If we want the point summarized by a posterior median, rather than a posterior mean, we need to set `robust = TRUE`.
+
+```{r}
+new <- tibble(percentage.black = 40)
+
+predict(m1, 
+        newdata = new,
+        robust = T)
+```
+
+As is typical, **brms** accompanies the point `Estimate` with measures of spread. If we wanted to use the posterior medians of the `a` and `b` parameters to do this by hand, it will probably be easiest to extract these using `fixef()`.
+
+```{r}
+a_hat <- fixef(m1, robust = T)[1, 1]
+b_hat <- fixef(m1, robust = T)[2, 1]
+
+a_hat + b_hat * new
+```
+
+This method, however, gives a point estimate without any measures of spread.
+
+### 9.2.2 Linear predictor with uncertainty using `posterior_linpred` or `posterior_epred`.
+
+Much like in the text, the `brms::posterior_linpred()` function returns a vector of posterior draws.
+
+```{r}
+y_linpred <-
+  posterior_linpred(m1, 
+                    newdata = new,
+                    robust = T)
+?posterior_linpred
+str(y_linpred)
+```
+
+We can get these by hand by working directly with `post`.
+
+```{r}
+postpred |> 
+  mutate(percentage.black = 40) |> 
+  mutate(y_linpred = b_Intercept + b_percentage.black * percentage.black) |> 
+  select(y_linpred) |>
+  head()
+```
+
+Happily for y'all **tidyverse** fans, this method returns a tibble.
+
+### 9.2.3 Predictive distribution for a new observation using `posterior_predict`.
+
+The `brms::posterior_predict()` function works very much like the `posterior_linpred()`, from last section.
+
+```{r}
+y_pred <-
+  posterior_predict(m1, 
+                    newdata = new,
+                    robust = T)
+
+str(y_pred)
+```
+
+You can do this by hand, to, by working directly with `post`.
+
+```{r}
+postpred |> 
+  mutate(percentage.black = 40) |> 
+  mutate(y_pred = rnorm(n(), mean = b_Intercept + b_percentage.black * percentage.black, sd = sigma)) |> 
+  select(y_pred) |> 
+  head()
+```
+
+Either way, we can now visualize the uncertainty in `y_pred` using a histogram. Here we'll do that with the results from the `posterior_predict()` method.
+
+```{r, fig.width = 3.75, fig.height = 3.25}
+tibble(y_pred = y_pred) %>% 
+  ggplot(aes(x = y_pred)) +
+  geom_histogram(binwidth = 1, boundary = 0, 
+                 fill = "grey75", color = "white") +
+  scale_y_continuous(NULL, breaks = NULL)
+```
+
+Here's a numeric breakdown.
+
+```{r}
+tibble(y_pred = y_pred) |> 
+  summarise(median = median(y_pred),
+            mad_sd = mad(y_pred),
+            age_prob = mean(y_pred < 4))
+```
+
+### 9.2.4 Prediction given a range of input values.
+
+We can use these three functions to evaluate the posterior predictions for a range of predictor values. First we define a range of `growth` values.
+
+```{r}
+new_grid <- tibble(percentage.black = seq(from = 10, to = 80, by = 5))
+
+glimpse(new_grid)
+```
+
+Now plug those into our post-processing functions.
+
+```{r}
+y_point_pred_grid <- 
+  predict(m1, 
+          newdata = new_grid,
+          robust = T) 
+
+y_linpred_grid <- 
+  posterior_linpred(m1, 
+                    newdata = new_grid,
+                    robust = T) 
+
+y_pred_grid <- 
+  posterior_predict(m1, 
+                    newdata = new_grid,
+                    robust = T)
+```
+
+Use the `str()` function to inspect what we've done.
+
+```{r}
+str(y_point_pred_grid)
+str(y_linpred_grid)
+str(y_pred_grid)
+```
+
+The first function, `brms::predict()`, returned a $13 \times 4$ numeric array where the rows indexed each of the 13 `growth` values and the columns are the typical **brms** summary statistics: `Estimate`, `Est.Error`, `Q2.5`, and `Q97.5`. Both `posterior_linpred()` and `posterior_predict()` returned $4{,}000 \times 13$ numeric arrays where the columns marks off the 13 values of `growth` and the rows index the 4,000 posterior draws for each.
+
+### 9.2.5 Propagating uncertainty.
+
+If we want to propagate uncertainty in our predictor, too, it's probably easiest to do with by working with `post` itself. Here we express that uncertainty as $\text{growth} \sim \operatorname{Normal}(2, 0.3)$. CHECK THIS, SILLY ANSWER FOR ME!!
+
+```{r}
+postpred |> 
+  # make the uncertain predictor
+  mutate(percentage.black = rnorm(n(), mean = 40.0, sd = 0.5)) |> 
+  # predict
+  mutate(y_pred = rnorm(n(), mean = b_Intercept + b_percentage.black *
+                               percentage.black, sd = sigma)) |> 
+  # now summarize
+  summarise(median = median(y_pred),
+            mad_sd = mad(y_pred),
+            age_prob = mean(y_pred <40))
+```
+
+### 9.2.6 Simulating uncertainty for the linear predictor and new observations.
+
+Load the `earnings.csv` data.
+
+```{r, warning = F, message = F}
+earnings <- read_csv("earnings.csv")
+
+glimpse(earnings)
+```
+
+Use `brm()` to fit the model, $\text{weight}_i = a + b \text{height}_i + e_i$, using default weak priors.
+
+```{r m9.1, warning = F, message = F}
+m9.1 <-
+  brm(data = earnings,
+      weight ~ height,
+      seed = 9,
+      file = "fits/m09.01")
+```
+
+Check the summary.
+
+```{r}
+print(m9.1, robust = T)
+```
+
+Since the intercept is difficult to interpret with this parameterization, we might center the predictor.
+
+```{r}
+earnings <-
+  earnings %>% 
+  mutate(c_height = height - 66)
+```
+
+Now fit the model, $\text{weight}_i = a + b (\text{height}_i - 66) + e_i$.
+
+```{r m9.2, warning = F, message = F}
+m9.2 <-
+  brm(data = earnings,
+      weight ~ c_height,
+      seed = 9,
+      file = "fits/m09.02")
+```
+
+```{r}
+print(m9.2, robust = T)
+```
+
+The intercept, `r round(fixef(m9.2)[1, 1], 1)`, is the expected `weight` value when `height == 66`. If we'd like a simple point prediction for `weight` when `c_height == 4`, we might use `brms::predict()`.
+
+```{r}
+new <- tibble(c_height = 4.0)
+
+predict(m9.2, 
+        newdata = new,
+        robust = T)[1]
+```
+
+If we'd like simulated draws for the linear predictor, we might use `brms::posterior_linpred()`.
+
+```{r}
+posterior_linpred(m9.2, 
+                  newdata = new,
+                  robust = T) %>% 
+  head()
+```
+
+If we want a full posterior predictive distribution for new persons of `c_weight == 4`, we'd then use `posterior_predict()`.
+
+```{r}
+posterior_predict(m9.2, 
+                  newdata = new,
+                  robust = T) %>% 
+  head()
+```
+
