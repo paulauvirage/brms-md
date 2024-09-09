@@ -202,7 +202,7 @@ The **brms** package also includes the `predict()`, `posterior_linpred()`, and `
 
 ```r
 # something like this - adapt
-new_grid <- data.frame(growth=seq(-2.0, 4.0, 0.5))
+new_grid <- data.frame(percentage.black=seq(10,80,5))
 y_point_pred_grid <- predict(M1, newdata=new_grid)
 y_linpred_grid <- posterior_linpred(M1, newdata=new_grid)
 y_pred_grid <- posterior_predict(M1, newdata=new_grid)
@@ -240,17 +240,17 @@ y_linpred <-
   posterior_linpred(m1, 
                     newdata = new,
                     robust = T)
-
+?posterior_linpred
 str(y_linpred)
 ```
 
 We can get these by hand by working directly with `post`.
 
 ```{r}
-posterior %>% 
-  muta(growth = 2) %>% 
-  mutate(y_linpred = b_Intercept + b_growth * growth) %>% 
-  select(y_linpred) %>% 
+postpred |> 
+  mutate(percentage.black = 40) |> 
+  mutate(y_linpred = b_Intercept + b_percentage.black * percentage.black) |> 
+  select(y_linpred) |>
   head()
 ```
 
@@ -262,7 +262,7 @@ The `brms::posterior_predict()` function works very much like the `posterior_lin
 
 ```{r}
 y_pred <-
-  posterior_predict(m7.1, 
+  posterior_predict(m1, 
                     newdata = new,
                     robust = T)
 
@@ -272,10 +272,10 @@ str(y_pred)
 You can do this by hand, to, by working directly with `post`.
 
 ```{r}
-post %>% 
-  mutate(growth = 2) %>% 
-  mutate(y_pred = rnorm(n(), mean = b_Intercept + b_growth * growth, sd = sigma)) %>% 
-  select(y_pred) %>% 
+postpred |> 
+  mutate(percentage.black = 40) |> 
+  mutate(y_pred = rnorm(n(), mean = b_Intercept + b_percentage.black * percentage.black, sd = sigma)) |> 
+  select(y_pred) |> 
   head()
 ```
 
@@ -292,10 +292,10 @@ tibble(y_pred = y_pred) %>%
 Here's a numeric breakdown.
 
 ```{r}
-tibble(y_pred = y_pred) %>% 
+tibble(y_pred = y_pred) |> 
   summarise(median = median(y_pred),
             mad_sd = mad(y_pred),
-            win_prob = mean(y_pred > 50))
+            age_prob = mean(y_pred < 4))
 ```
 
 ### 9.2.4 Prediction given a range of input values.
@@ -303,7 +303,7 @@ tibble(y_pred = y_pred) %>%
 We can use these three functions to evaluate the posterior predictions for a range of predictor values. First we define a range of `growth` values.
 
 ```{r}
-new_grid <- tibble(growth = seq(from = -2.0, to = 4.0, by = 0.5))
+new_grid <- tibble(percentage.black = seq(from = 10, to = 80, by = 5))
 
 glimpse(new_grid)
 ```
@@ -312,17 +312,17 @@ Now plug those into our post-processing functions.
 
 ```{r}
 y_point_pred_grid <- 
-  predict(m7.1, 
+  predict(m1, 
           newdata = new_grid,
           robust = T) 
 
 y_linpred_grid <- 
-  posterior_linpred(m7.1, 
+  posterior_linpred(m1, 
                     newdata = new_grid,
                     robust = T) 
 
 y_pred_grid <- 
-  posterior_predict(m7.1, 
+  posterior_predict(m1, 
                     newdata = new_grid,
                     robust = T)
 ```
@@ -339,18 +339,18 @@ The first function, `brms::predict()`, returned a $13 \times 4$ numeric array wh
 
 ### 9.2.5 Propagating uncertainty.
 
-If we want to propagate uncertainty in our predictor, too, it's probably easiest to do with by working with `post` itself. Here we express that uncertainty as $\text{growth} \sim \operatorname{Normal}(2, 0.3)$.
+If we want to propagate uncertainty in our predictor, too, it's probably easiest to do with by working with `post` itself. Here we express that uncertainty as $\text{growth} \sim \operatorname{Normal}(2, 0.3)$. CHECK THIS, SILLY ANSWER FOR ME!!
 
 ```{r}
-post %>% 
+postpred |> 
   # make the uncertain predictor
-  mutate(growth = rnorm(n(), mean = 2.0, sd = 0.3)) %>% 
+  mutate(percentage.black = rnorm(n(), mean = 40.0, sd = 0.5)) |> 
   # predict
-  mutate(y_pred = rnorm(n(), mean = b_Intercept + b_growth * growth, sd = sigma)) %>% 
+  mutate(y_pred = rnorm(n(), mean = b_Intercept + b_percentage.black * percentage.black, sd = sigma)) |> 
   # now summarize
   summarise(median = median(y_pred),
             mad_sd = mad(y_pred),
-            win_prob = mean(y_pred > 50))
+            age_prob = mean(y_pred <40))
 ```
 
 ### 9.2.6 Simulating uncertainty for the linear predictor and new observations.

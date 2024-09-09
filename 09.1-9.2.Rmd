@@ -3,9 +3,9 @@ title: "Chapter 9.1-9.2: Prediction and Bayesian inference, excluding priors"
 author: "Paul Robinson"
 date: "`r format(Sys.Date())`"
 output:
-  github_document
+  html_document:
+    keep_md: true
 ---
-
 
 Adapted from [Aki Vehtari's code for ""Regression and other stories"](https://github.com/avehtari/ROS-Examples/) adapted by [Solomon Kurtz](https://github.com/ASKurz/Working-through-Regression-and-other-stories) for [brms](https://paulbuerkner.com/brms/) and the [tidyverse](https://www.tidyverse.org/).
 
@@ -371,7 +371,7 @@ m9.1 <-
   brm(data = earnings,
       weight ~ height,
       seed = 9,
-      file = "fits/m09.01")
+      file = "models/m09.01")
 ```
 
 Check the summary.
@@ -395,7 +395,7 @@ m9.2 <-
   brm(data = earnings,
       weight ~ c_height,
       seed = 9,
-      file = "fits/m09.02")
+      file = "models/m09.02")
 ```
 
 ```{r}
