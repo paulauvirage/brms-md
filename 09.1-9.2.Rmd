@@ -8,7 +8,7 @@ output:
 ---
 
 Adapted from [Aki Vehtari's code for ""Regression and other stories"](https://github.com/avehtari/ROS-Examples/) adapted by [Solomon Kurtz](https://github.com/ASKurz/Working-through-Regression-and-other-stories) for [brms](https://paulbuerkner.com/brms/) and the [tidyverse](https://www.tidyverse.org/).
-
+https://solomonkurz.netlify.app/blog/2019-02-02-robust-linear-regression-with-student-s-t-distribution/
 
 ```{r, echo = F, cache = F}
 knitr::opts_chunk$set(fig.retina = 2.5)
@@ -18,11 +18,9 @@ options(width = 100)
 
 # Prediction and Bayesian inference
 
-> Bayesian inference involves three steps that go beyond classical estimation. First, the data and model are combined to form a *posterior distribution*, which we typically summarize by a set of simulations of the *parameters* in the model. Second, we can propagate uncertainty in this distribution--that is, we can get simulation-based *predictions* for unobserved or future outcomes that accounts for uncertainty in the model parameters. Third, we can include additional information into the model using a *prior distribution*. (p. 113, *emphasis* in the original)
+These notes adapt my tutorial on Bayesian inference with `rstanarm` for simple linear regression, with the example of lion nose markings predicting age, to `brms` with Solomon Kurtz' code as a starting point. 
 
-## 9.1 Propagating uncertainty in inference using posterior simulations
-
-Once again, we return to model `m7.1` from Chapter 7. First, we'll load the `LionNoses` data.
+Load the necessary packages, import the `LionNoses` data and transform the proportion variable to percentage, for ease of interpretation.
 
 ```{r, warning = F, message = F}
 library(tidyverse)
@@ -34,26 +32,35 @@ library(patchwork)
 
 lion_noses <- as.data.frame(LionNoses) |> 
   mutate(percentage.black = 100*proportion.black)
-lion_noses
+skimr::skim(lion_noses)
 ```
 
-Now we load make the model.
+The model is as for the rstanarm example, with age ~ intercept + error, wit Gaussian error. Jumping ahead, I'm going to also run a robust regression with `student` family replacing Gaussian, then put this later in the text. LATER ALSO ADD M1BRMS WIHT OUTLIERS/INFLUENTIAL POINTS REMOVED
 
 ```{r m1, warning = F, message = F}
 methods(class = "brmsfit")
 
-m1 <- brm(data = lion_noses,
+m1brms <- brm(data = lion_noses,
       age ~ percentage.black,
       seed = 7,
-      file = "models/m1")
+      file = "models/m1brms")
+
+m2brms <- update(m1brms,
+                 family = "student",
+                 file = "models/m2brms"
+                 )
+
 ```
 
-Here's the summary.
+Here's the summary, using first `broom.mixed` then the default brms summary.
 
 ```{r}
-tidy(m1)
-print(m1, robust = T, prob = 0.9)
+tidy(m1brms)
+tidy(m2brms)
+print(m1brms, robust = T, prob = 0.9)
+print(m2brms, robust = T, prob = 0.9)
 ```
+Continuing now just with m1brms
 
 These summaries are derived from the posterior simulations, which you can access directly with `posterior_samples()`.
 
