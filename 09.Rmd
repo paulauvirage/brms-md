@@ -30,38 +30,44 @@ library(abd)
 
 lion_noses <- as.data.frame(LionNoses) |> 
   mutate(percentage.black = 100*proportion.black)
+lion_noses
 ```
 
 Now we load **brms** and the model.
 
 ```{r m1, warning = F, message = F}
 library(brms)
+methods(class = "brmsfit")
 
-m7.1 <-
+m1 <-
   brm(data = lion_noses,
       age ~ percentage.black,
       seed = 7,
-      file = "fits/m1")
+      file = "models/m1")
 ```
 
 Here's the summary.
 
 ```{r}
-print(m1, robust = T)
+library(broom.mixed)
+tidy(m1)
+print(m1, robust = T, prob = 0.9)
 ```
 
 These summaries are derived from the posterior simulations, which you can access directly with `posterior_samples()`.
 
 ```{r}
-posterior <- posterior_samples(m1)
-
-head(posterior)
+library(posterior)
+m1_fit <- as.data.frame(m1$fit)
+dim(m1_fit)
+head(m1_fit)
+?as_draws
 ```
 
 We can hand-compute the median and mad sd for each using a **tidyverse**-style workflow like this.
 
 ```{r, message = F}
-posterior |> 
+m1_fit |> 
   pivot_longer(b_Intercept:sigma) |> 
   group_by(name) |>
   summarise(median = median(value),
@@ -73,8 +79,8 @@ posterior |>
 Before we make Figure 9.1, it'll be handy to save a few summary values.
 
 ```{r}
-med_a <- median(posterior$b_Intercept)
-med_b <- median(posterior$b_growth)
+med_a <- median(m1_fit$b_Intercept)
+med_b <- median(m1_fit$b_percentage.black)
 
 se_a <- fixef(m1, robust = T)[1, 2]
 se_b <- fixef(m1, robust = T)[2, 2]
