@@ -29,26 +29,31 @@ library(brms)
 library(broom.mixed)
 library(posterior) # do I need this?
 library(patchwork)
+library(Hmisc)
 
 lion_noses <- as.data.frame(LionNoses) |> 
   mutate(percentage.black = 100*proportion.black)
+
 skimr::skim(lion_noses)
 ```
 
-The model is as for the rstanarm example, with age ~ intercept + error, wit Gaussian error. Jumping ahead, I'm going to also run a robust regression with `student` family replacing Gaussian, then put this later in the text. LATER ALSO ADD M1BRMS WIHT OUTLIERS/INFLUENTIAL POINTS REMOVED
+Specify the model. For now we're going with default priors so need the outcome, predictor(s) and data. The model is as for the rstanarm example, with age (outcome) ~ intercept + mX (percentage.black) + error, with Gaussian error. Jumping ahead, I'm going to also run a robust regression with `student` family replacing Gaussian, then put this later in the text. LATER ALSO ADD M1BRMS WITH OUTLIERS/INFLUENTIAL POINTS REMOVED.
+
+Code below shows the brms model strucute for the simple linear
 
 ```{r m1, warning = F, message = F}
 methods(class = "brmsfit")
 
 m1brms <- brm(data = lion_noses,
-      age ~ percentage.black,
-      seed = 7,
-      file = "models/m1brms")
+              age ~ percentage.black,
+              family = "gaussian",
+              seed = 7,
+              file = "models/m1brms")
 
-m2brms <- update(m1brms,
-                 family = "student",
-                 file = "models/m2brms"
-                 )
+m2brms <- update(
+  m1brms,
+  family = "student",
+  file = "models/m2brms")
 
 ```
 
@@ -59,26 +64,53 @@ tidy(m1brms)
 tidy(m2brms)
 print(m1brms, robust = T, prob = 0.9)
 print(m2brms, robust = T, prob = 0.9)
+summary(m1brms)
 ```
 Continuing now just with m1brms
 
-These summaries are derived from the posterior simulations, which you can access directly with `posterior_samples()`.
+These can also be calculated "by hand" from the posterior simulation, which we'll call `sims`.
 
 ```{r}
-postpred <- as.data.frame(m1brms$fit)
-dim(postpred)
+sims <- as.data.frame(m1brms$fit)
+dim(sims)
 head(postpred)
-?as_draws
+?as_draws # from posterior package maybe useful?
 ```
 
-We can hand-compute the median and mad sd for each using a **tidyverse**-style workflow like this.
+These can also be calculated "by hand" from the posterior simulation
 
 ```{r, message = F}
-postpred |> 
-  pivot_longer(b_Intercept:sigma) |> 
-  group_by(name) |>
-  summarise(median = median(value),
-            mad_sd = mad(value))
+estimate_a <- round(median(sims$b_Intercept),3) 
+estimate_b <- round(median(sims$b_percentage.black),3)
+estimate_c <- round(median(sims$sigma),3)
+ci_a <- round(quantile(sims$b_Intercept, c(0.05, 0.95),3))
+ci_b <- round(quantile(sims$b_percentage.black, c(0.05, 0.95),3))
+
+printL(
+"the estimated intercept is" = estimate_a,
+"the estimated slope is"=estimate_b,
+"the estimated residual standard deviation is"=estimate_c,
+"the intercept 90% cis are"=ci_a,
+"the slope 90% cis are"=ci_b
+)
+```
+
+So the result for $\sigma$ the residual standard deviation means that age will be within +/- 2*1.7 = +/-3.4 years 95% of the time.
+
+The R<sup>2</sup> is given by `R2 <- 1 - sigma(m1)^2 / sd(lion_noses$age)^2`
+
+```{r}
+r2 <- 1- sigma(m1brms)^2 / sd(lion_noses$age)^2
+print(r2)
+```
+
+So almost 60% of the variance in age can be explained by nose markings. Where is the other 40%? Probably in other variables (lion health?) the model did not include
+
+95% CIs for the parameters and a hypothesis test that the slope is not zero
+
+```{r}
+round(brms::posterior_interval(m1brms, prob = 0.9), 2)
+hypothesis(m1brms, "percentage.black > 0")
 ```
 
 ### 9.1.1 Uncertainty in the regression coefficients and implied uncertainty in the regression line.

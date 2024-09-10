@@ -11,7 +11,7 @@
 
 <meta name="author" content="Paul Robinson" />
 
-<meta name="date" content="2024-09-09" />
+<meta name="date" content="2024-09-10" />
 
 <title>Chapter 9.1-9.2: Prediction and Bayesian inference, excluding priors</title>
 
@@ -353,7 +353,7 @@ display: none;
 <h1 class="title toc-ignore">Chapter 9.1-9.2: Prediction and Bayesian
 inference, excluding priors</h1>
 <h4 class="author">Paul Robinson</h4>
-<h4 class="date">2024-09-09</h4>
+<h4 class="date">2024-09-10</h4>
 
 </div>
 
@@ -377,9 +377,11 @@ library(brms)
 library(broom.mixed)
 library(posterior) # do I need this?
 library(patchwork)
+library(Hmisc)
 
 lion_noses &lt;- as.data.frame(LionNoses) |&gt; 
   mutate(percentage.black = 100*proportion.black)
+
 skimr::skim(lion_noses)</code></pre>
 <table>
 <caption>Data summary</caption>
@@ -490,11 +492,14 @@ skimr::skim(lion_noses)</code></pre>
 </tr>
 </tbody>
 </table>
-<p>The model is as for the rstanarm example, with age ~ intercept +
-error, wit Gaussian error. Jumping ahead, I’m going to also run a robust
+<p>Specify the model. For now we’re going with default priors so need
+the outcome, predictor(s) and data. The model is as for the rstanarm
+example, with age (outcome) ~ intercept + mX (percentage.black) + error,
+with Gaussian error. Jumping ahead, I’m going to also run a robust
 regression with <code>student</code> family replacing Gaussian, then put
-this later in the text. LATER ALSO ADD M1BRMS WIHT OUTLIERS/INFLUENTIAL
-POINTS REMOVED</p>
+this later in the text. LATER ALSO ADD M1BRMS WITH OUTLIERS/INFLUENTIAL
+POINTS REMOVED.</p>
+<p>Code below shows the brms model strucute for the simple linear</p>
 <pre class="r"><code>methods(class = &quot;brmsfit&quot;)</code></pre>
 <pre><code>##  [1] add_criterion           add_ic                  as_draws_array          as_draws_df            
 ##  [5] as_draws_list           as_draws_matrix         as_draws_rvars          as_draws               
@@ -523,14 +528,15 @@ POINTS REMOVED</p>
 ## [97] waic                    WAIC                   
 ## see &#39;?methods&#39; for accessing help and source code</code></pre>
 <pre class="r"><code>m1brms &lt;- brm(data = lion_noses,
-      age ~ percentage.black,
-      seed = 7,
-      file = &quot;models/m1brms&quot;)
+              age ~ percentage.black,
+              family = &quot;gaussian&quot;,
+              seed = 7,
+              file = &quot;models/m1brms&quot;)
 
-m2brms &lt;- update(m1brms,
-                 family = &quot;student&quot;,
-                 file = &quot;models/m2brms&quot;
-                 )</code></pre>
+m2brms &lt;- update(
+  m1brms,
+  family = &quot;student&quot;,
+  file = &quot;models/m2brms&quot;)</code></pre>
 <p>Here’s the summary, using first <code>broom.mixed</code> then the
 default brms summary.</p>
 <pre class="r"><code>tidy(m1brms)</code></pre>
@@ -588,11 +594,31 @@ default brms summary.</p>
 ## Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
 ## and Tail_ESS are effective sample size measures, and Rhat is the potential
 ## scale reduction factor on split chains (at convergence, Rhat = 1).</code></pre>
+<pre class="r"><code>summary(m1brms)</code></pre>
+<pre><code>##  Family: gaussian 
+##   Links: mu = identity; sigma = identity 
+## Formula: age ~ percentage.black 
+##    Data: lion_noses (Number of observations: 32) 
+##   Draws: 4 chains, each with iter = 2000; warmup = 1000; thin = 1;
+##          total post-warmup draws = 4000
+## 
+## Regression Coefficients:
+##                  Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+## Intercept            0.85      0.59    -0.34     1.99 1.00     3288     2780
+## percentage.black     0.11      0.02     0.08     0.14 1.00     3314     2010
+## 
+## Further Distributional Parameters:
+##       Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+## sigma     1.73      0.23     1.34     2.24 1.00     2992     2742
+## 
+## Draws were sampled using sampling(NUTS). For each parameter, Bulk_ESS
+## and Tail_ESS are effective sample size measures, and Rhat is the potential
+## scale reduction factor on split chains (at convergence, Rhat = 1).</code></pre>
 <p>Continuing now just with m1brms</p>
-<p>These summaries are derived from the posterior simulations, which you
-can access directly with <code>posterior_samples()</code>.</p>
-<pre class="r"><code>postpred &lt;- as.data.frame(m1brms$fit)
-dim(postpred)</code></pre>
+<p>These can also be calculated “by hand” from the posterior simulation,
+which we’ll call <code>sims</code>.</p>
+<pre class="r"><code>sims &lt;- as.data.frame(m1brms$fit)
+dim(sims)</code></pre>
 <pre><code>## [1] 4000    6</code></pre>
 <pre class="r"><code>head(postpred)</code></pre>
 <pre><code>##   b_Intercept b_percentage.black    sigma Intercept    lprior      lp__
@@ -602,25 +628,71 @@ dim(postpred)</code></pre>
 ## 4  1.05441490         0.10277323 1.811902  4.365640 -3.542279 -64.13853
 ## 5  0.69610719         0.11336202 1.747696  4.348490 -3.518407 -64.01039
 ## 6  0.98364414         0.09966903 1.640560  4.194856 -3.460324 -63.91573</code></pre>
-<pre class="r"><code>?as_draws</code></pre>
+<pre class="r"><code>?as_draws # from posterior package maybe useful?</code></pre>
 <pre><code>## Help on topic &#39;as_draws&#39; was found in the following packages:
 ## 
 ##   Package               Library
 ##   posterior             /home/paul/R/x86_64-pc-linux-gnu-library/4.4
 ##   brms                  /home/paul/R/x86_64-pc-linux-gnu-library/4.4</code></pre>
-<p>We can hand-compute the median and mad sd for each using a
-<strong>tidyverse</strong>-style workflow like this.</p>
-<pre class="r"><code>postpred |&gt; 
-  pivot_longer(b_Intercept:sigma) |&gt; 
-  group_by(name) |&gt;
-  summarise(median = median(value),
-            mad_sd = mad(value))</code></pre>
-<pre><code>## # A tibble: 3 × 3
-##   name               median mad_sd
-##   &lt;chr&gt;               &lt;dbl&gt;  &lt;dbl&gt;
-## 1 b_Intercept         0.857 0.564 
-## 2 b_percentage.black  0.106 0.0147
-## 3 sigma               1.70  0.217</code></pre>
+<p>These can also be calculated “by hand” from the posterior
+simulation</p>
+<pre class="r"><code>estimate_a &lt;- round(median(sims$b_Intercept),3) 
+estimate_b &lt;- round(median(sims$b_percentage.black),3)
+estimate_c &lt;- round(median(sims$sigma),3)
+ci_a &lt;- round(quantile(sims$b_Intercept, c(0.05, 0.95),3))
+ci_b &lt;- round(quantile(sims$b_percentage.black, c(0.05, 0.95),3))
+
+printL(
+&quot;the estimated intercept is&quot; = estimate_a,
+&quot;the estimated slope is&quot;=estimate_b,
+&quot;the estimated residual standard deviation is&quot;=estimate_c,
+&quot;the intercept 90% cis are&quot;=ci_a,
+&quot;the slope 90% cis are&quot;=ci_b
+)</code></pre>
+<pre><code>## the estimated intercept is: 0.857
+## 
+## the estimated slope is: 0.106
+## 
+## the estimated residual standard deviation is: 1.7
+## 
+## the intercept 90% cis are:
+##  5% 95% 
+##   0   2 
+## 
+## the slope 90% cis are:
+##  5% 95% 
+##   0   0</code></pre>
+<p>So the result for <span class="math inline">\(\sigma\)</span> the
+residual standard deviation means that age will be within +/- 2*1.7 =
++/-3.4 years 95% of the time.</p>
+<p>The R<sup>2</sup> is given by
+<code>R2 &lt;- 1 - sigma(m1)^2 / sd(lion_noses$age)^2</code></p>
+<pre class="r"><code>r2 &lt;- 1- sigma(m1brms)^2 / sd(lion_noses$age)^2
+print(r2)</code></pre>
+<pre><code>##       50% 
+## 0.5965842</code></pre>
+<p>So almost 60% of the variance in age can be explained by nose
+markings. Where is the other 40%? Probably in other variables (lion
+health?) the model did not include</p>
+<p>95% CIs for the parameters and a hypothesis test that the slope is
+not zero</p>
+<pre class="r"><code>round(brms::posterior_interval(m1brms, prob = 0.9), 2)</code></pre>
+<pre><code>##                        5%    95%
+## b_Intercept         -0.12   1.81
+## b_percentage.black   0.08   0.13
+## sigma                1.39   2.14
+## Intercept            3.82   4.77
+## lprior              -3.68  -3.39
+## lp__               -67.83 -63.90</code></pre>
+<pre class="r"><code>hypothesis(m1brms, &quot;percentage.black &gt; 0&quot;)</code></pre>
+<pre><code>## Hypothesis Tests for class b:
+##               Hypothesis Estimate Est.Error CI.Lower CI.Upper Evid.Ratio Post.Prob Star
+## 1 (percentage.black) &gt; 0     0.11      0.02     0.08     0.13        Inf         1    *
+## ---
+## &#39;CI&#39;: 90%-CI for one-sided and 95%-CI for two-sided hypotheses.
+## &#39;*&#39;: For one-sided hypotheses, the posterior probability exceeds 95%;
+## for two-sided hypotheses, the value tested against lies outside the 95%-CI.
+## Posterior probabilities of point hypotheses assume equal prior probabilities.</code></pre>
 <div id="uncertainty-in-the-regression-coefficients-and-implied-uncertainty-in-the-regression-line." class="section level3">
 <h3>9.1.1 Uncertainty in the regression coefficients and implied
 uncertainty in the regression line.</h3>
