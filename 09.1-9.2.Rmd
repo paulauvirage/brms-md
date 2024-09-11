@@ -1,5 +1,6 @@
 ---{r}
-title: "Chapter 9.1-9.2: Prediction and Bayesian inference, excluding priors"
+title: "Prediction and Bayesian inference with brms"
+subtitle: "Simple linear model from ch9 of "regression and other stories""
 author: "Paul Robinson"
 date: "`r format(Sys.Date())`"
 output:
@@ -19,18 +20,49 @@ options(width = 100)
 
 # Prediction and Bayesian inference
 
-These notes adapt my tutorial on Bayesian inference with `rstanarm` for simple linear regression, with the example of lion nose markings predicting age, to `brms` with Solomon Kurtz' code as a starting point. 
+I have been preparing notes for lectures introducing Bayesian inference with R and the package `rstanarm` for people who are beginners in both R and statistical inference. I chose `rstanarm` as it is the chosen package for the two textbooks I am using, both freely available;
+- "Regression and other stories" (ROS), with a [free pdf download](https://avehtari.github.io/ROS-Examples/), for which simple linear regression is introduced in chapters 7-9 and there is detailed supporting code, for example for [chapter 9](https://avehtari.github.io/ROS-Examples/ElectionsEconomy/hibbs.html); and
+
+- [Bayes Rules](https://www.bayesrulesbook.com/) and [coures](https://bayes-rules.github.io/posts/resources/) by the authors using the book 
+
+[check this](https://socaldatascience.github.io/bootcamp-materials-2023/) and
+[this](https://socaldatascience.github.io/bootcamp-materials-2023/slides/day02-regression/02a-regression.html#/numerical-response-and-categorical-explanatory-variable) and
+[weeks 6 and 7](https://www.stats115.com/schedule) of a course using Bayes Rules by one of the authors.
+
+One advantage with rstanarm is that running models with the default priors have been shown, including with the ROS examples, to give essentially the same answers (parameter estimates with uncertainty) as classical inference with Rand the `lm` and `glm` functions; something I've also tested an confirmed for my simple linear model example. This is reassuring and also allows the introduction of Bayesian inference by stealth; after all, how many introductory courses mention that classical inference is being used?
+
+Regardless, an alternative of rstanarm, with a simlar objective to make Bayesian inference possible whilst knowing not much of the underlying justification (or lack) is `brms`. This post is my introducing myself to it, with the help of Solomon Kurtz [BRMS code for ROS](https://github.com/ASKurz/Working-through-Regression-and-other-stories). I am not aware of any textbooks that use brms. Solomon Kurtz' [translations of books to brms](https://solomonkurz.netlify.app/book/) are a key resource. CHECK THIS [ecololgical forecasting with mvgam and brms](https://nicholasjclark.github.io/physalia-forecasting-course/)
+
+Let's jump into the modelling process, for a numerical outcome with one numerical predictor, as before using the `LionNoses` dataset available via the R package `abd`. The brms modelling process is described in the package author's [2017 paper](https://www.jstatsoft.org/article/view/v080i01) introdicing the package, with supporting code.
+
+Our objectives will be, as with the rstanarm example, to:
+
+- specify and run the model
+- check it's run ok
+- look at the results (posterior predictions)
+- get useful summaries (parameter estimates with uncertinty intervals, R^2, ...)
+- examine for outcomes the difference between a point estimate of the mean value, point estimate of the mean with uncertainy intervals and prediction values wiht uncertainty intervals
+- consider and run alternative model(s)
+- choose the "best" model
+- compare the results with rstanarm and lm/glm results 
+- report the findings in a manner comprehensible to non-statisticians.
+
+ 
 
 Load the necessary packages, import the `LionNoses` data and transform the proportion variable to percentage, for ease of interpretation.
 
+The brms paper usues just the brms package. ROS code for the chapter also uses `ggplot2` (a part of the `tidyverse` collection of packages) and `bayesplot`, whilst Solomon Kurtz loads all of the tidyverse plus (for plotting figures side by side) `patchwork`. Bayes Rules additionally loads a number of packages, some not relevant to simple linear models. Maybe we'll use `janitor`, `broom:mixed` and `tidybayes`. I ivsited the [modelr](https://github.com/tidyverse/modelr) website and found it was reommended not to e used (by the author) and replaced by the [tidymodels](https://www.tidymodels.org/) suite of packages. That is an extra layer of complexity for another time. i have added `posterior` as I'm curious; it seems to be a method for having objects that can be understood by both rstanarm and brms.
+
 ```{r, warning = F, message = F}
 library(tidyverse)
-library(abd)
-library(brms)
-library(broom.mixed)
+library(janitor) # more tidying
+library(bayesplot) # plotting
+library(tidybayes) # tidy plotting
+library(abd) # the source of the LionNoses data
+library(brms) # the modelling package
+library(broom.mixed) # model output as a dataframe
 library(posterior) # do I need this?
-library(patchwork)
-library(Hmisc)
+library(patchwork) # organising multiple plots on a page
 
 lion_noses <- as.data.frame(LionNoses) |> 
   mutate(percentage.black = 100*proportion.black)
@@ -38,9 +70,9 @@ lion_noses <- as.data.frame(LionNoses) |>
 skimr::skim(lion_noses)
 ```
 
-Specify the model. For now we're going with default priors so need the outcome, predictor(s) and data. The model is as for the rstanarm example, with age (outcome) ~ intercept + mX (percentage.black) + error, with Gaussian error. Jumping ahead, I'm going to also run a robust regression with `student` family replacing Gaussian, then put this later in the text. LATER ALSO ADD M1BRMS WITH OUTLIERS/INFLUENTIAL POINTS REMOVED.
+Specify the model. For now we're going with default priors so need the outcome, predictor(s) and data. The model is as for the rstanarm example, with age (outcome) ~ intercept + mX (percentage.black) + error, with Gaussian error. LATER ALSO ADD M1BRMS WITH OUTLIERS/INFLUENTIAL POINTS REMOVED AND TRY ROBUST REGRESSION.
 
-Code below shows the brms model strucure for the simple linear regression model.
+Code below shows the brms model structure for the simple linear regression model.
 
 ```{r m1, warning = F, message = F}
 methods(class = "brmsfit")
@@ -48,23 +80,24 @@ methods(class = "brmsfit")
 m1brms <- brm(data = lion_noses,
               age ~ percentage.black,
               family = gaussian,
-              seed = 7,
               file = "models/m1brms")
-
-m2brms <- update(
-  m1brms,
-  family = student,
-  file = "models/m2brms")
 
 ```
 
 Here's the summary, using first `broom.mixed` then the default brms summary.
 
 ```{r}
+# pull out the posterior draws
+get_variables(m1brms)
+sims <- as.matrix(m1brms$fit)
+head(sims)
+sims_draws <- as_draws_df(sims)
+head(sims_draws)
+dim(sims_draws)
+summarise_draws(sims_draws)
+
 tidy(m1brms)
-tidy(m2brms)
 print(m1brms, robust = T, prob = 0.9)
-print(m2brms, robust = T, prob = 0.9)
 summary(m1brms)
 ```
 Continuing now just with m1brms
@@ -239,7 +272,7 @@ postpred %>%
 
 ## 9.2 Prediction and uncertainty: `predict`, `posterior_linpred`, and `posterior_predict`
 
-The **brms** package also includes the `predict()`, `posterior_linpred()`, and `posterior_predict()` functions. On page 115, we learn these will alow us to
+The **brms** package also includes the `predict()`, `posterior_linpred()`, and `posterior_predict()` functions. On page 115, we learn these will allow us to
 
 * compute "the best point estimate of the average value of $y$ for new data points," $\hat a + \hat b x^\text{new}$;
 * compute "the distribution of uncertainty about the expected or average value of $y$ for new data points," $a + b x^\text{new}$ ; and
