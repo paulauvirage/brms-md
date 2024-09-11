@@ -1,4 +1,4 @@
----
+---{r}
 title: "Chapter 9.1-9.2: Prediction and Bayesian inference, excluding priors"
 author: "Paul Robinson"
 date: "`r format(Sys.Date())`"
@@ -15,6 +15,7 @@ knitr::opts_chunk$set(fig.retina = 2.5)
 knitr::opts_chunk$set(fig.align = "center")
 options(width = 100)
 ```
+
 
 # Prediction and Bayesian inference
 
@@ -39,20 +40,20 @@ skimr::skim(lion_noses)
 
 Specify the model. For now we're going with default priors so need the outcome, predictor(s) and data. The model is as for the rstanarm example, with age (outcome) ~ intercept + mX (percentage.black) + error, with Gaussian error. Jumping ahead, I'm going to also run a robust regression with `student` family replacing Gaussian, then put this later in the text. LATER ALSO ADD M1BRMS WITH OUTLIERS/INFLUENTIAL POINTS REMOVED.
 
-Code below shows the brms model strucute for the simple linear
+Code below shows the brms model strucure for the simple linear regression model.
 
 ```{r m1, warning = F, message = F}
 methods(class = "brmsfit")
 
 m1brms <- brm(data = lion_noses,
               age ~ percentage.black,
-              family = "gaussian",
+              family = gaussian,
               seed = 7,
               file = "models/m1brms")
 
 m2brms <- update(
   m1brms,
-  family = "student",
+  family = student,
   file = "models/m2brms")
 
 ```
@@ -73,8 +74,8 @@ These can also be calculated "by hand" from the posterior simulation, which we'l
 ```{r}
 sims <- as.data.frame(m1brms$fit)
 dim(sims)
-head(postpred)
-?as_draws # from posterior package maybe useful?
+head(sims)
+# `as_draws` from posterior package maybe useful?
 ```
 
 These can also be calculated "by hand" from the posterior simulation
@@ -86,6 +87,8 @@ estimate_c <- round(median(sims$sigma),3)
 ci_a <- round(quantile(sims$b_Intercept, c(0.05, 0.95),3))
 ci_b <- round(quantile(sims$b_percentage.black, c(0.05, 0.95),3))
 
+bayes_R2(m1brms)
+
 printL(
 "the estimated intercept is" = estimate_a,
 "the estimated slope is"=estimate_b,
@@ -94,6 +97,7 @@ printL(
 "the slope 90% cis are"=ci_b
 )
 ```
+
 
 So the result for $\sigma$ the residual standard deviation means that age will be within +/- 2*1.7 = +/-3.4 years 95% of the time.
 
@@ -118,11 +122,13 @@ hypothesis(m1brms, "percentage.black > 0")
 Before we make Figure 9.1, it'll be handy to save a few summary values.
 
 ```{r}
-med_a <- median(postpred$b_Intercept)
-med_b <- median(postpred$b_percentage.black)
-
+med_a <- median(sims$b_Intercept)
+med_b <- median(sims$b_percentage.black)
+med_a
+med_b
 se_a <- fixef(m1brms, robust = T)[1, 2]
 se_b <- fixef(m1brms, robust = T)[2, 2]
+tidy(m1brms)[2,5] # this is med_b and hte others can also be exracted from the tidy(m1bmrs) table.
 ```
 
 Now make the two subplots of Figure 9.1.
@@ -135,7 +141,7 @@ theme_set(theme_linedraw() +
 
 # left
 p1 <-
-  postpred %>% 
+  sims  |> 
   ggplot(aes(x = b_Intercept)) +
   geom_histogram(binwidth = 1, boundary = 0, 
                  fill = "grey75", color = "white") +
@@ -152,7 +158,7 @@ p1 <-
 
 # right
 p2 <-
-  postpred %>% 
+  sims  |> 
   ggplot(aes(x = b_percentage.black)) +
   geom_histogram(binwidth = 0.5, boundary = 0, 
                  fill = "grey75", color = "white") +
